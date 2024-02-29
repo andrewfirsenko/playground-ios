@@ -27,26 +27,15 @@ struct Bag<Element: Hashable>: Sequence {
     // MARK: - Sequence
     
     func makeIterator() -> some IteratorProtocol {
-        BagIterator<Element>(storage: storage)
-    }
-    
-    // MARK: - BagIterator
-    
-    private struct BagIterator<Element: Hashable>: IteratorProtocol {
-
-        private var storage: [Element: Int]
+        var copyStorage = storage
         
-        init(storage: [Element: Int]) {
-            self.storage = storage
-        }
-        
-        mutating func next() -> Element? {
-            guard let element = storage.first else { return nil }
+        return AnyIterator<Element> {
+            guard let element = copyStorage.first else { return nil }
             
             if element.value > 1 {
-                storage[element.key]? -= 1
+                copyStorage[element.key]? -= 1
             } else {
-                storage[element.key] = nil
+                copyStorage[element.key] = nil
             }
             return element.key
         }
@@ -59,10 +48,18 @@ extension Bag: CustomStringConvertible {
     }
 }
 
-var bag = Bag<Int>()
-bag.insert(3)
-bag.insert(2)
-bag.insert(3)
+extension Bag: ExpressibleByArrayLiteral {
+    
+    typealias ArrayLiteralElement = Element
+    
+    init(arrayLiteral elements: Element...) {
+        self.storage = elements.reduce(into: [Element: Int](), { partialResult, element in
+            partialResult[element, default: 0] += 1
+        })
+    }
+}
+
+var bag: Bag = [2, 3, 3, 4, 5, 2, 3]
 
 print("(\(bag.count)) \(bag)")
 bag.forEach { element in
