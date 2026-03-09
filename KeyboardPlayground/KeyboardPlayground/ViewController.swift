@@ -7,12 +7,23 @@
 
 import UIKit
 
+//class ViewController: UIViewController {
+//    private let textFiled = UITextField()
+//
+//    override func viewDidLoad() {
+//        super.viewDidLoad()
+//        
+//        textFiled.becomeFirstResponder()
+//    }
+//}
+
 class ViewController: UIViewController {
-    // MARK: - Lifecycle
+    private let customInputView = CustomInputView()
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        view.backgroundColor = .systemPink
+        view.addSubview(customInputView)
+        customInputView.becomeFirstResponder()
     }
 }
-
