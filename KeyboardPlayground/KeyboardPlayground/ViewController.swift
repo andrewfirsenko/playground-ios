@@ -25,5 +25,17 @@ class ViewController: UIViewController {
         
         view.addSubview(customInputView)
         customInputView.becomeFirstResponder()
+        
+        view.backgroundColor = .yellow
+        
+        UIView.animate(
+            withDuration: 5,
+            animations: {
+                self.view.backgroundColor = .yellow
+            },
+            completion: { _ in
+                debugPrint("log: completion")
+            }
+        )
     }
 }
