@@ -29,8 +29,12 @@ final class LegacyGeoServiceAdapter: CountryProvider {
         
         let result: Result<Country, GeoError> = await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
-                state.mutate { $0.continuation = continuation }
-                guard !state.value.isCancelled else {
+                var isCancelled = false
+                state.mutate { state in
+                    state.continuation = continuation
+                    isCancelled = state.isCancelled
+                }
+                guard !isCancelled else {
                     state.resume(returning: .failure(.cancelled))
                     return
                 }
@@ -40,10 +44,13 @@ final class LegacyGeoServiceAdapter: CountryProvider {
                     state.resume(returning: result)
                 }
                 
-                if state.value.isCancelled {
+                state.mutate { state in
+                    state.requestToken = requestToken
+                    isCancelled = state.isCancelled
+                }
+                if isCancelled {
                     requestToken.cancel()
                 }
-                state.mutate { $0.requestToken = requestToken }
             }
         } onCancel: {
             var requestToken: Cancellable?
