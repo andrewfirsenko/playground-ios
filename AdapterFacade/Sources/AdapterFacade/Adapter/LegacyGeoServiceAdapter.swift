@@ -8,43 +8,66 @@
 import Foundation
 
 final class LegacyGeoServiceAdapter: CountryProvider {
+    // MARK: - Nested Types
+    fileprivate struct State {
+        var continuation: CheckedContinuation<Result<Country, GeoError>, Never>?
+        var requestToken: Cancellable?
+    }
+    
+    // Dependencies
     private let legacyGeoService: LegacyGeoServiceLogic
     
+    // MARK: - Init
     init(legacyGeoService: LegacyGeoServiceLogic) {
         self.legacyGeoService = legacyGeoService
     }
     
-//    legacyGeoService.fetch(code: code) - completion вызывается 2жды. Эту проблему не исправил
-    
+    // MARK: - Public Methods
     func country(code: String) async throws(GeoError) -> Country {
-        let token: ThreadSafeWrapper<Cancellable?> = ThreadSafeWrapper(nil)
+        let state = ThreadSafeWrapper(State())
+        
         let result: Result<Country, GeoError> = await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
-                token.mutate { token in
-                    token = legacyGeoService.fetch(code: code) { data, error in
-                        if let error {
-                            continuation.resume(returning: .failure(.network(underlying: error)))
-                            return
-                        }
-                        
-                        guard let data else {
-                            continuation.resume(returning: .failure(.invalidData))
-                            return
-                        }
-                        
-                        do throws(GeoError) {
-                            let country = try mapCountry(data)
-                            continuation.resume(returning: .success(country))
-                        } catch {
-                            continuation.resume(returning: .failure(error))
-                        }
+                state.mutate { $0.continuation = continuation }
+                
+                let requestToken = legacyGeoService.fetch(code: code) { data, error in
+                    if let error {
+                        state.resume(returning: .failure(.network(underlying: error)))
+                        return
+                    }
+                    
+                    guard let data else {
+                        state.resume(returning: .failure(.notFound))
+                        return
+                    }
+                    
+                    do throws(GeoError) {
+                        let country = try mapCountry(data)
+                        state.resume(returning: .success(country))
+                    } catch {
+                        state.resume(returning: .failure(error))
                     }
                 }
+                state.mutate { $0.requestToken = requestToken }
             }
         } onCancel: {
-            token.mutate { $0?.cancel() }
+            // Тут надо подумать, возможно тут есть гонка
+            state.value.requestToken?.cancel()
+            state.resume(returning: .failure(.cancelled))
         }
         
         return try result.get()
+    }
+}
+
+// MARK: - Private Methods
+private extension ThreadSafeWrapper where T == LegacyGeoServiceAdapter.State {
+    func resume(returning: Result<Country, GeoError>) {
+        var continuation: CheckedContinuation<Result<Country, GeoError>, Never>?
+        mutate { state in
+            continuation = state.continuation
+            state.continuation = nil
+        }
+        continuation?.resume(returning: returning)
     }
 }
