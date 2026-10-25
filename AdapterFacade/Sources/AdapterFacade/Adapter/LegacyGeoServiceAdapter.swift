@@ -12,6 +12,7 @@ final class LegacyGeoServiceAdapter: CountryProvider {
     fileprivate struct State {
         var continuation: CheckedContinuation<Result<Country, GeoError>, Never>?
         var requestToken: Cancellable?
+        var isCancelled: Bool = false
     }
     
     // Dependencies
@@ -29,30 +30,28 @@ final class LegacyGeoServiceAdapter: CountryProvider {
         let result: Result<Country, GeoError> = await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 state.mutate { $0.continuation = continuation }
+                guard !state.value.isCancelled else {
+                    state.resume(returning: .failure(.cancelled))
+                    return
+                }
                 
                 let requestToken = legacyGeoService.fetch(code: code) { data, error in
-                    if let error {
-                        state.resume(returning: .failure(.network(underlying: error)))
-                        return
-                    }
-                    
-                    guard let data else {
-                        state.resume(returning: .failure(.notFound))
-                        return
-                    }
-                    
-                    do throws(GeoError) {
-                        let country = try mapCountry(data)
-                        state.resume(returning: .success(country))
-                    } catch {
-                        state.resume(returning: .failure(error))
-                    }
+                    let result = LegacyGeoServiceAdapter.makeResult(data: data, error: error)
+                    state.resume(returning: result)
+                }
+                
+                if state.value.isCancelled {
+                    requestToken.cancel()
                 }
                 state.mutate { $0.requestToken = requestToken }
             }
         } onCancel: {
-            // Тут надо подумать, возможно тут есть гонка
-            state.value.requestToken?.cancel()
+            var requestToken: Cancellable?
+            state.mutate { state in
+                state.isCancelled = true
+                requestToken = state.requestToken
+            }
+            requestToken?.cancel()
             state.resume(returning: .failure(.cancelled))
         }
         
@@ -61,6 +60,25 @@ final class LegacyGeoServiceAdapter: CountryProvider {
 }
 
 // MARK: - Private Methods
+private extension LegacyGeoServiceAdapter {
+    static func makeResult(data: [String: Any]?, error: Error?) -> Result<Country, GeoError> {
+        if let error {
+            return .failure(.network(underlying: error))
+        }
+        
+        guard let data else {
+            return .failure(.notFound)
+        }
+        
+        do throws(GeoError) {
+            let country = try mapCountry(data)
+            return .success(country)
+        } catch {
+            return .failure(error)
+        }
+    }
+}
+
 private extension ThreadSafeWrapper where T == LegacyGeoServiceAdapter.State {
     func resume(returning: Result<Country, GeoError>) {
         var continuation: CheckedContinuation<Result<Country, GeoError>, Never>?

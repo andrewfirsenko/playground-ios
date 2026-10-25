@@ -1,6 +1,6 @@
 //
-//  LegacyGeoServiceAdapter.swift
-//  CountryMapper
+//  CountryMapper.swift
+//  AdapterFacade
 //
 //  Created by Andrew on 25.10.2026.
 //
