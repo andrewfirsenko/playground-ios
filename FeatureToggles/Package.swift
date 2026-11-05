@@ -13,7 +13,7 @@ let package = Package(
             name: "FeatureTogglesTests",
             dependencies: ["FeatureToggles"],
             swiftSettings: [
-                // .define("PART1"),
+                 .define("PART1"),
                 // .define("PART2"),
                 // .define("PART3"),
                 // .define("BONUS"),
